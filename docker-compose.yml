@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    container_name: portfolioiq_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: portfolioiq
+      POSTGRES_PASSWORD: portfolioiq_dev_password
+      POSTGRES_DB: portfolioiq
+    ports:
+      - "5432:5432"
+    volumes:
+      - portfolioiq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolioiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: portfolioiq_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db   # inside Docker, services talk by service name, not localhost
+      POSTGRES_USER: portfolioiq
+      POSTGRES_PASSWORD: portfolioiq_dev_password
+      POSTGRES_DB: portfolioiq
+      FRED_API_KEY: ${FRED_API_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code   # live-reload: code changes on your machine reflect instantly
+
+volumes:
+  portfolioiq_pgdata:
