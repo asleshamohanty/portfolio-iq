@@ -152,3 +152,60 @@ def run_stress_test(req: StressRequest, db: Session = Depends(get_db)):
     """
     weights = {k.upper(): v for k, v in req.weights.items()}
     return {"weights": weights, "scenarios": stress_test(db, weights)}
+
+# ── Sprint 3 schemas ──────────────────────────────────────────────────────────
+
+class ForecastRequest(BaseModel):
+    weights: dict[str, float]
+
+
+# ── Sprint 3 endpoints ────────────────────────────────────────────────────────
+
+@router.post("/forecast/volatility")
+def forecast_volatility(req: ForecastRequest, db: Session = Depends(get_db)):
+    """
+    Predict 30-day forward portfolio volatility using XGBoost.
+    Returns: prediction, current vol, SHAP top-5 feature drivers,
+             and honest walk-forward validation metrics.
+    """
+    from app.services.ml_engine import train_and_predict
+    weights = {k.upper(): v for k, v in req.weights.items()}
+    result = train_and_predict(db, weights)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/forecast/explain")
+def explain_forecast(req: ForecastRequest, db: Session = Depends(get_db)):
+    """
+    Plain-English breakdown of why the model predicted what it did.
+    Reads SHAP values and returns a human-readable explanation.
+    """
+    from app.services.ml_engine import train_and_predict
+    weights = {k.upper(): v for k, v in req.weights.items()}
+    result = train_and_predict(db, weights)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    lines = [
+        f"Predicted 30-day volatility: {result['predicted_30d_volatility']*100:.1f}%",
+        f"Current 21-day volatility:   {result['current_21d_volatility']*100:.1f}%",
+        f"Signal: {result['signal']}",
+        "",
+        "Top drivers of this prediction:",
+    ]
+    for i, feat in enumerate(result["shap_top5_features"], 1):
+        lines.append(
+            f"  {i}. {feat['feature']} — {feat['direction']} "
+            f"(SHAP: {feat['shap_value']:+.4f})"
+        )
+
+    lines += [
+        "",
+        f"Validation: MAE={result['validation'].get('mae','N/A')}, "
+        f"RMSE={result['validation'].get('rmse','N/A')} "
+        f"across {result['validation'].get('n_folds','N/A')} walk-forward folds",
+    ]
+
+    return {"explanation": "\n".join(lines), "raw": result}
