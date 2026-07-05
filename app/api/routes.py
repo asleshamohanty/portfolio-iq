@@ -209,3 +209,38 @@ def explain_forecast(req: ForecastRequest, db: Session = Depends(get_db)):
     ]
 
     return {"explanation": "\n".join(lines), "raw": result}
+
+# ── Sprint 4 schemas ──────────────────────────────────────────────────────────
+
+class RAGRequest(BaseModel):
+    query: str
+    symbol: str = None
+    top_k: int = 5
+
+
+# ── Sprint 4 endpoints ────────────────────────────────────────────────────────
+
+@router.post("/rag/search")
+def rag_search(req: RAGRequest, db: Session = Depends(get_db)):
+    """
+    Semantic search over indexed SEC filings and earnings documents.
+    Returns top-K most relevant chunks with similarity scores and sources.
+    """
+    from app.services.rag_engine import search_documents
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    results = search_documents(db, req.query, symbol=req.symbol, top_k=req.top_k)
+
+    if not results:
+        return {
+            "query": req.query,
+            "results": [],
+            "message": "No relevant documents found. Run document ingestion first.",
+        }
+
+    return {
+        "query":   req.query,
+        "results": results,
+        "count":   len(results),
+    }

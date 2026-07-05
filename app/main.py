@@ -15,7 +15,7 @@ from fastapi import FastAPI
 
 from app.db.database import engine, Base
 from app.api.routes import router
-from app.models import market_data, portfolio  # noqa: F401 — import so tables register with Base
+from app.models import market_data, portfolio, documents  # noqa: F401 — import so tables register with Base
 
 app = FastAPI(
     title="PortfolioIQ",
