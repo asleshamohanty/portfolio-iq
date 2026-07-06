@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # FRED API (free key from https://fred.stlouisfed.org/docs/api/api_key.html)
     FRED_API_KEY: str = ""
 
+    # Gemini API (free key from https://aistudio.google.com/app/apikey)
+    GEMINI_API_KEY: str = ""
+
     # Which tickers to track in Sprint 1 (keep this small to start)
     DEFAULT_TICKERS: str = "AAPL,MSFT,GOOGL,AMZN,NVDA,JPM,GS,BLK,V,JNJ"
 

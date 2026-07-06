@@ -244,3 +244,52 @@ def rag_search(req: RAGRequest, db: Session = Depends(get_db)):
         "results": results,
         "count":   len(results),
     }
+
+# ── Sprint 5 schemas ──────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    question: str
+    weights: dict[str, float]
+    lookback_days: int = 252
+
+
+class StressChatRequest(BaseModel):
+    scenario: str
+    weights: dict[str, float]
+
+
+# ── Sprint 5 endpoints ────────────────────────────────────────────────────────
+
+@router.post("/chat")
+def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
+    """
+    Ask any natural language question about your portfolio.
+    Combines live quant metrics, ML forecast, and RAG-retrieved
+    document context into a single grounded answer.
+    """
+    from app.services.llm_engine import chat
+    weights = {k.upper(): v for k, v in req.weights.items()}
+    result  = chat(db, req.question, weights, req.lookback_days)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/chat/stress-test")
+def stress_test_endpoint(req: StressChatRequest, db: Session = Depends(get_db)):
+    """
+    The flagship endpoint. Pass a plain-English scenario and a portfolio.
+    Returns a grounded analysis combining historical stress test data,
+    current risk metrics, and evidence retrieved from SEC filings.
+
+    Example scenarios:
+      - "Fed raises rates 200bps"
+      - "NVIDIA misses earnings and drops 30%"
+      - "Global recession similar to 2008"
+    """
+    from app.services.llm_engine import stress_test_chat
+    weights = {k.upper(): v for k, v in req.weights.items()}
+    result  = stress_test_chat(db, req.scenario, weights)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
