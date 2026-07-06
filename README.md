@@ -42,25 +42,49 @@ Pass a plain-English scenario and a portfolio. The system maps the scenario to h
 ---
 
 ## Architecture
-Data Sources
-Yahoo Finance (OHLCV prices)  ──┐
-FRED Federal Reserve (macro)  ──┤──▶  Ingestion Layer  ──▶  PostgreSQL
-SEC EDGAR (10-K / 10-Q)       ──┤                               │
-Earnings Transcripts          ──┘                          pgvector
-│
-┌────────────────────────┤
-│                        │
-Quant Engine            RAG Engine
-ML Engine                    │
-│                        │
-└──────────┬─────────────┘
-│
-Financial Reasoning Layer
-(LLM — Gemini)
-│
-FastAPI Gateway
-│
-User
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Data Sources                      │
+│  Yahoo Finance · FRED · SEC EDGAR · Earnings Calls  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                 Ingestion Layer                      │
+│        Price Pipeline · Macro Pipeline · Doc Pipeline│
+└────────────┬─────────────────────────┬──────────────┘
+             │                         │
+             ▼                         ▼
+    ┌─────────────────┐      ┌──────────────────┐
+    │   PostgreSQL    │      │    pgvector       │
+    │ prices · macro  │      │  doc embeddings  │
+    │ portfolios · logs│      │  cosine search   │
+    └────────┬────────┘      └────────┬─────────┘
+             │                         │
+             ▼                         ▼
+┌────────────────────────────────────────────────────┐
+│                   Engine Layer                      │
+│  Quant Engine · ML Engine (XGBoost) · RAG Engine   │
+└───────────────────────┬────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────────┐
+│           Financial Reasoning Layer                 │
+│              LLM (Gemini 2.5 Flash)                │
+│   metrics + predictions + documents → prose report │
+└───────────────────────┬────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────────┐
+│                FastAPI Gateway                      │
+│  /risk/analyse · /forecast/volatility · /chat      │
+│  /rag/search · /chat/stress-test · /portfolio      │
+└───────────────────────┬────────────────────────────┘
+                        │
+                        ▼
+                      User
+```
 
 **Layer 1 — Data Ingestion**
 yfinance pulls 5 years of daily OHLCV for 10 tickers with retry logic and rate-limit handling. fredapi pulls 5 macroeconomic series from the Federal Reserve. SEC EDGAR's free API fetches 10-K filings for 10 companies. All ingestion is idempotent — PostgreSQL upserts mean re-running the pipeline never creates duplicates.
@@ -157,31 +181,35 @@ Every intelligence component is exposed through FastAPI. The dashboard, a future
 ## Verified Results
 
 Every sprint produced a working, deployable version of the platform.
-Sprint 1 — Data Foundation
-✅ 12,540 price rows across 10 tickers (1,254 trading days each)
-✅ 37,720 macroeconomic data points across 5 FRED series
-✅ Sector classification verified (e.g. GS → Financial Services)
-✅ Idempotent ingestion confirmed — re-running produces no duplicates
-Sprint 2 — Quantitative Analytics Engine
-✅ Full risk report: 15.66% annualised volatility, Sharpe 0.30, Sortino 0.44
-✅ Max drawdown -10.75%, VaR 95% -1.73%, CVaR -2.26%
-✅ Sector exposure: Technology 50%, Financial Services 35%, Healthcare 15%
-✅ 2022 stress test: -17.85% cumulative return, -24.69% max drawdown
-Sprint 3 — ML Forecasting
-✅ XGBoost predicting 30-day volatility: 19.73% vs 19.02% current
-✅ Walk-forward validation: MAE 0.068, RMSE 0.088 across 5 folds
-✅ SHAP top drivers: ret_21d, macro_CPIAUCSL, macro_CPIAUCSL_roc
-Sprint 4 — RAG Engine
-✅ 1,802 chunks embedded across 10 companies
-✅ GS risk factors query: similarity 0.616 from 2025 10-K
-✅ BLK revenue model query: similarity 0.624 from 2024 10-K
-✅ Source URLs traceable to actual SEC EDGAR filings
-Sprint 5 — LLM Reasoning Layer
-✅ /chat returning grounded institutional-grade prose analysis
-✅ /chat/stress-test: Fed 200bps scenario producing four-paragraph
-risk report grounded in 2022 stress data and JPM/GS/BLK filings
-✅ Full pipeline verified: quant → ML → RAG → LLM synthesis
 
+**Sprint 1 — Data Foundation**
+- ✅ 12,540 price rows across 10 tickers (1,254 trading days each)
+- ✅ 37,720 macroeconomic data points across 5 FRED series
+- ✅ Sector classification verified (GS → Financial Services, AAPL → Technology)
+- ✅ Idempotent ingestion confirmed — re-running produces no duplicates
+
+**Sprint 2 — Quantitative Analytics Engine**
+- ✅ Full risk report: 15.66% annualised volatility, Sharpe 0.30, Sortino 0.44
+- ✅ Max drawdown -10.75%, VaR 95% -1.73%, CVaR -2.26%
+- ✅ Sector exposure: Technology 50%, Financial Services 35%, Healthcare 15%
+- ✅ 2022 stress test: -17.85% cumulative return, -24.69% max drawdown
+
+**Sprint 3 — ML Forecasting**
+- ✅ XGBoost predicting 30-day volatility: 19.73% vs 19.02% current
+- ✅ Walk-forward validation: MAE 0.068, RMSE 0.088 across 5 folds
+- ✅ SHAP top drivers: ret_21d, macro_CPIAUCSL, macro_CPIAUCSL_roc
+
+**Sprint 4 — RAG Engine**
+- ✅ 1,802 chunks embedded across 10 companies
+- ✅ GS risk factors query: similarity 0.616 from 2025 10-K
+- ✅ BLK revenue model query: similarity 0.624 from 2024 10-K
+- ✅ Source URLs traceable to actual SEC EDGAR filings
+
+**Sprint 5 — LLM Reasoning Layer**
+- ✅ /chat returning grounded institutional-grade prose analysis
+- ✅ /chat/stress-test: Fed 200bps scenario producing four-paragraph risk report
+- ✅ Sources cited: JPM 2026 10-K, GS 2026 10-K, BLK 2024 10-K
+- ✅ Full pipeline verified: quant → ML → RAG → LLM synthesis
 ---
 
 ## Quick Start
@@ -228,19 +256,21 @@ curl -X POST http://localhost:8000/chat/stress-test \
 ---
 
 ## Project Structure
+
+```
 portfolioiq/
 ├── app/
 │   ├── core/config.py           # Settings and environment variables
 │   ├── db/database.py           # SQLAlchemy engine and session management
-│   ├── models/                  # Database table definitions
+│   ├── models/
 │   │   ├── market_data.py       # Tickers, prices, macro indicators
 │   │   ├── portfolio.py         # Portfolios and holdings
 │   │   └── documents.py         # Document chunks with vector embeddings
-│   ├── ingestion/               # Data pipeline modules
+│   ├── ingestion/
 │   │   ├── prices.py            # Yahoo Finance ingestion
 │   │   ├── macro.py             # FRED macroeconomic ingestion
 │   │   └── documents.py         # SEC EDGAR filing ingestion
-│   ├── services/                # Core intelligence layers
+│   ├── services/
 │   │   ├── quant_engine.py      # Quantitative analytics engine
 │   │   ├── ml_engine.py         # XGBoost forecasting + SHAP
 │   │   ├── rag_engine.py        # Document retrieval engine
@@ -255,8 +285,7 @@ portfolioiq/
 ├── Dockerfile
 ├── init.sql                     # Enables pgvector on first boot
 └── requirements.txt
-
----
+```
 
 ## Roadmap
 
